@@ -1,4 +1,4 @@
-import { Component, ViewChild, computed, signal } from '@angular/core';
+import { Component, ViewChild, computed, effect, signal } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { WorkspaceState } from '../../state/workspace-state';
 import { FileOperationsService } from './file-operations.service';
@@ -51,7 +51,7 @@ interface NamePromptState {
 
     <cdk-virtual-scroll-viewport itemSize="28" class="tree-viewport" role="tree" aria-label="File explorer" (contextmenu)="onEmptyAreaContextMenu($event)">
       <div
-        *cdkVirtualFor="let row of rows(); let i = index"
+        *cdkVirtualFor="let row of rows(); trackBy: trackByFullPath; let i = index"
         class="tree-row"
         role="treeitem"
         [attr.data-row-index]="i"
@@ -169,10 +169,35 @@ export class FileTreeComponent {
   constructor(
     readonly state: WorkspaceState,
     private readonly ops: FileOperationsService
-  ) {}
+  ) {
+    // Roving tabindex requires exactly one row to hold tabindex="0" at all
+    // times — if the row list shrinks (e.g. collapsing a folder while focus
+    // was on a now-gone child) and focusedIndex isn't clamped, no row would
+    // match it and the tree would stop being Tab-reachable at all.
+    effect(() => {
+      const lastIndex = Math.max(this.rows().length - 1, 0);
+      if (this.focusedIndex() > lastIndex) {
+        this.focusedIndex.set(lastIndex);
+      }
+    });
+  }
 
   isMarkdown(name: string): boolean {
     return isMarkdownFile(name);
+  }
+
+  /**
+   * `rows()` is a computed that rebuilds fresh row objects on every
+   * recalculation (flattenTree always returns new array/object instances).
+   * Without a trackBy, *cdkVirtualFor's default identity tracking would
+   * destroy and recreate every row's DOM node on any tree change —
+   * including the currently keyboard-focused one, silently dropping focus
+   * (e.g. expanding a folder while focused on it). fullPath is stable
+   * across recomputations for an unchanged entry, so this keeps existing
+   * nodes (and their focus) alive.
+   */
+  trackByFullPath(_index: number, row: TreeRow): string {
+    return row.fullPath;
   }
 
   async onRowClick(row: TreeRow, index: number): Promise<void> {

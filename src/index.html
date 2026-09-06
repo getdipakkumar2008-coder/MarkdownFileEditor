@@ -5,7 +5,11 @@
     <!-- Defense-in-depth per Architecture.md §7: blocks inline script execution.
          A self-hosted deployment behind a real server should set this as a real
          response header instead — a <meta> CSP cannot cover frame-ancestors or
-         report-uri, but this is what a static-file host can offer. -->
+         report-uri, but this is what a static-file host can offer.
+         KNOWN FOLLOW-UP: connect-src 'self' will block outbound requests once
+         telemetry (adapters/telemetry) is enabled with a real Sentry DSN —
+         add that ingest host to connect-src at the same time enabled/sentryDsn
+         are set in telemetry-config.ts, not before (no DSN is decided yet). -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'" />
     <title>MdEditor</title>
     <base href="/" />

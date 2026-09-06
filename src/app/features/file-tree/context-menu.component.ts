@@ -136,4 +136,13 @@ export class ContextMenuComponent implements AfterViewInit {
   onDocumentContextMenu(): void {
     this.dismiss.emit();
   }
+
+  /** Tabbing out of the menu (not just clicking away) should also close it — otherwise it stays visually open with stale focus state. */
+  @HostListener('focusout', ['$event'])
+  onFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget as Node | null;
+    if (!next || !this.menuRef?.nativeElement.contains(next)) {
+      this.dismiss.emit();
+    }
+  }
 }

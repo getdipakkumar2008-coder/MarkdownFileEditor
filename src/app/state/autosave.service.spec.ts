@@ -22,6 +22,7 @@ function makeOpenFile(overrides: Partial<Parameters<WorkspaceState['setOpenFile'
     lastKnownDiskMtime: 0,
     isMarkdown: true,
     isBinary: false,
+    contentRevision: 1,
     ...overrides,
   };
 }

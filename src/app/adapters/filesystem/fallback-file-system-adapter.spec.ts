@@ -77,4 +77,31 @@ describe('FallbackFileSystemAdapter', () => {
   it('requestPersistedPermission is always granted (no platform permission model)', async () => {
     expect(await adapter.requestPersistedPermission()).toBe('granted');
   });
+
+  it('openFolder strips the picked folder\'s own name from webkitRelativePath, matching native mode\'s root', async () => {
+    const openPromise = adapter.openFolder();
+
+    // The adapter appends a hidden <input webkitdirectory> and waits for its
+    // 'change' event — simulate the browser's directory-upload behavior,
+    // where every file's webkitRelativePath is prefixed with the picked
+    // folder's own name (e.g. "my-folder/notes.md", "my-folder/docs/a.md").
+    const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+    const topFile = makeFileWithRelativePath('notes.md', '# top', 'my-folder/notes.md');
+    const nestedFile = makeFileWithRelativePath('a.md', '# nested', 'my-folder/docs/a.md');
+    Object.defineProperty(input, 'files', { value: [topFile, nestedFile], configurable: true });
+    input.dispatchEvent(new Event('change'));
+
+    const root = (await openPromise) as unknown as FileSystemDirectoryHandle;
+    const entries = await adapter.listChildren(root);
+
+    // "my-folder" itself must NOT appear as a wrapper folder in the tree.
+    expect(entries.map((e) => e.name)).toEqual(['docs', 'notes.md']);
+    expect(entries.find((e) => e.name === 'docs')?.kind).toBe('folder');
+  });
 });
+
+function makeFileWithRelativePath(name: string, content: string, webkitRelativePath: string): File {
+  const file = new File([content], name);
+  Object.defineProperty(file, 'webkitRelativePath', { value: webkitRelativePath });
+  return file;
+}

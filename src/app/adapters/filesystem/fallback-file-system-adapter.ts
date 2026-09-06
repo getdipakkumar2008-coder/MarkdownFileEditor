@@ -181,7 +181,14 @@ export class FallbackFileSystemAdapter implements FileSystemAdapter {
     const root = new VirtualDirectoryHandle('root');
     for (const file of Array.from(files)) {
       const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-      const segments = relativePath.split('/').filter(Boolean);
+      const allSegments = relativePath.split('/').filter(Boolean);
+      // webkitRelativePath always includes the PICKED folder's own name as
+      // the first segment (e.g. "my-folder/notes.md"). Native mode's
+      // showDirectoryPicker returns a handle FOR the picked folder, so its
+      // direct children land at the tree root with no such wrapper — strip
+      // that first segment here so fallback mode's root matches native
+      // mode's root instead of nesting everything one level deeper.
+      const segments = allSegments.length > 1 ? allSegments.slice(1) : allSegments;
       let cursor = root;
       for (let i = 0; i < segments.length - 1; i++) {
         const segment = segments[i];

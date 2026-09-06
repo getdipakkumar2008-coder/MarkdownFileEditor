@@ -1,6 +1,6 @@
 # Specification — Markdown & Text File Editor (v1)
 
-Status: Draft for review — no implementation started.
+Status: v1 implemented (all `doc/skill.md` build phases complete). Automated coverage is now the full stack called for by this document — unit, integration, and Playwright E2E (Chromium + Firefox) — wired into GitHub Actions CI; see `doc/Architecture.md` §8. **Not yet done: a manual QA pass in real Chrome/Firefox/Safari, and a real Safari/WebKit run** — everything below has been verified by automated tests and production builds, but not by a human clicking through the running app, and Playwright's `webkit` project is not a substitute for actual Safari.
 Source: `Product_Markdown_Editor_Build_Prompt.md` (business build prompt)
 Decisions confirmed with business/product owner on 2026-09-06:
 
@@ -9,7 +9,8 @@ Decisions confirmed with business/product owner on 2026-09-06:
 | Hosted SaaS vs. self-hostable/OSS | **Open-source, self-hosted.** Static build, no backend required to run the app. |
 | Monetization in v1? | **None.** No billing, no license gating, no accounts in v1. Architecture must leave a clean seam (pluggable auth/entitlement boundary) to add a paid tier after ~1 year without a rewrite. |
 | Firefox/Safari fallback acceptable? | **Yes, permanently.** Fallback (upload/download) is a first-class, permanently supported mode — not a stopgap. No Electron/Tauri packaging in v1. |
-| Error-monitoring backend / CI provider | **Not yet decided.** Spec defines the integration point (Sentry-compatible client SDK behind an interface); concrete DSN/CI provider is an infra TODO, not a blocker for build.
+| Error-monitoring backend | **Not yet decided.** Spec defines the integration point (Sentry-compatible client SDK behind an interface, `adapters/telemetry/`); concrete DSN is an infra TODO, not a blocker for build. |
+| CI provider | **GitHub Actions** — pragmatic default for an OSS/self-hosted repo (doc/Architecture.md §8). |
 
 ---
 
@@ -108,7 +109,7 @@ Numbered FR- IDs below are the traceability anchor for design docs and tests. Ea
 
 ## 6. Acceptance Criteria (Definition of Done)
 
-Mirrors the business doc's checklist, each item traceable to FR-IDs above:
+Mirrors the business doc's checklist, each item traceable to FR-IDs above. Checkboxes stay unchecked until verified by a human in a real browser, not just by automated tests — see the Status line at the top of this document for what's actually been done so far.
 
 - [ ] US-1/FR-1 — Open folder, working file tree
 - [ ] US-2,4/FR-5,7 — Open, edit, save `.md` file; persisted to real disk file
@@ -122,10 +123,11 @@ Mirrors the business doc's checklist, each item traceable to FR-IDs above:
 
 ## 7. Test Strategy Summary
 
-- **Unit**: Markdown parse/render; DOMPurify sanitization against a maintained XSS payload corpus (not a single smoke case); debounce timing; save-state reducer.
+- **Unit** (Vitest, 65 tests as of this writing): Markdown parse/render; DOMPurify sanitization against a maintained XSS payload corpus (not a single smoke case); debounce timing (autosave AND preview re-render); save-state reducer; content-revision resync logic; roving-tabindex clamp; focus-trap directive; fallback-adapter directory-upload path normalization.
 - **Integration**: File CRUD against a mocked File System Access API (handle mocks); IndexedDB backup/recovery flow; external-modification and permission-revocation scenarios.
-- **E2E (Playwright, Chromium)**: Every US-1..11 story as a scripted flow.
-- **Manual**: Firefox/Safari fallback pass, confirmed each release since fallback is a permanent supported mode, not a stopgap.
+- **E2E** (Playwright, 16 specs — 15 Chromium + 1 Firefox, all green as of this writing): `e2e/` — Chromium project drives the real app against an in-page mock of the File System Access API (`e2e/support/mock-native-fs.ts`), since Playwright cannot script the OS-native folder picker; the Firefox project exercises the fallback adapter's real `<input webkitdirectory>` upload path, since Firefox genuinely lacks `showDirectoryPicker`. Covers open/edit/save, preview sanitization (5 XSS payloads), CRUD via context menu, keyboard-only tree navigation, autosave + IndexedDB crash-recovery, and the Firefox fallback upload; not yet every US-1..11 permutation.
+- **CI**: GitHub Actions (`.github/workflows/ci.yml`) — build, unit tests, Playwright suite on every push/PR.
+- **Manual** (still outstanding — see Status line above): a human QA pass in real Chrome/Firefox/Safari, and the Firefox/Safari fallback pass called for in the Compatibility NFR.
 
 ## 8. Open Items Carried Forward (non-blocking for build start)
 

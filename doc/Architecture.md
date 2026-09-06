@@ -124,10 +124,14 @@ Windowed rendering (e.g. `cdk-virtual-scroll-viewport` from Angular CDK) over a 
 
 ## 8. Testing Architecture
 
-- **Unit** (Vitest/Jest): pure functions and services — `MarkdownRenderer.renderSafe`, `AutosaveService` state machine, debounce utilities. `FileSystemAdapter` implementations tested against a hand-rolled mock of `FileSystemFileHandle`/`FileSystemDirectoryHandle`.
+- **Unit** (Vitest, actually implemented — not Jest): pure functions and services — `MarkdownRenderer.renderSafe`, `AutosaveService` state machine, debounce utilities, `redactUnsafeMetadata`, `flattenTree`, `FocusTrapDirective`. `FileSystemAdapter` implementations tested against a hand-rolled mock of `FileSystemFileHandle`/`FileSystemDirectoryHandle`; IndexedDB-backed code (`IndexedDbBackupStore`) tested against `fake-indexeddb`.
 - **Integration**: `FileOperationsService` + mocked adapter, covering CRUD, external-modification conflict, permission-revocation-mid-session, disk-full simulation (mock `createWritable` rejecting).
-- **E2E** (Playwright, Chromium): scripted per user story (US-1..11 in spec). Firefox/Safari fallback is a **manual** pass per release (Playwright's FSA support on non-Chromium is limited) — tracked as a release checklist item, not automatable in v1.
-- CI gate: unit + integration + E2E must pass before merge to main; a11y checks (axe) run as part of E2E.
+- **E2E** (Playwright — implementation in `e2e/`):
+  - **Chromium project**: the real File System Access API can't be scripted from outside the browser (no OS-dialog automation), so Chromium specs inject an in-page mock via `page.addInitScript` (`e2e/support/mock-native-fs.ts`) that implements `showDirectoryPicker`/`FileSystemFileHandle`/`FileSystemDirectoryHandle` backed by an in-memory tree, and intercept it *before* app bootstrap. This is the same "mock the FS Access API for automated environments" approach doc/specification.md's own test strategy calls for at the integration-test level, extended one layer up to E2E — it exercises the app's real `NativeFileSystemAdapter` code, not a stub of it.
+  - **Firefox project**: exercises `FallbackFileSystemAdapter`'s real `<input type="file" webkitdirectory>` path using Playwright's `setInputFiles`, since Firefox genuinely lacks `showDirectoryPicker` — no mocking needed here, the capability-detection fallback triggers naturally.
+  - Covers: open folder → tree → open/edit/save a `.md` file; Markdown preview sanitization (XSS payload assertions); create/rename/delete/duplicate via the context menu; autosave + IndexedDB crash-recovery (via a real page reload, not a mocked one); keyboard-only tree/dialog navigation.
+  - Not yet covered end-to-end: every US-1..11 permutation from the spec, and a real Safari/WebKit run (Playwright's `webkit` project is Apple's engine but not a substitute for actual Safari — that stays a manual check).
+- **CI**: GitHub Actions, `.github/workflows/ci.yml` — on push/PR: `npm ci` → `ng build` → `vitest run` → `playwright test` (Chromium + Firefox projects, browsers installed via `npx playwright install --with-deps`).
 
 ## 9. Reserved Seam: Future Paid Tier / Auth (post-v1, not built now)
 
@@ -158,8 +162,9 @@ This is explicitly a seam, not a spec — no auth UI, no entitlement checks, no 
       /dialogs
     /state          # workspace/open-file signal store
   /assets
-/e2e                # Playwright specs, one per user story
-/sw                 # Workbox config
+/e2e                # Playwright specs + support/mock-native-fs.ts
+/ngsw-config.json    # Angular service worker precache config (§6 — not a /sw folder; no separate Workbox config)
+/.github/workflows   # CI (§8)
 ```
 
 ## 11. Explicit Non-Goals (architectural, not just product)

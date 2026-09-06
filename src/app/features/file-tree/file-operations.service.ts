@@ -47,6 +47,7 @@ export class FileOperationsService {
       lastKnownDiskMtime: result.lastModified,
       isMarkdown: isSupportedTextFile(handle.name) && handle.name.toLowerCase().match(/\.(md|markdown)$/) !== null,
       isBinary: result.isBinary,
+      contentRevision: 0, // setOpenFile() always assigns the real revision — see WorkspaceState.setOpenFile
     };
     this.state.setOpenFile(openFile);
     this.state.pendingRecovery.set(null);
@@ -66,7 +67,7 @@ export class FileOperationsService {
     const backup = this.state.pendingRecovery();
     const file = this.state.openFile();
     if (!backup || !file || file.path !== backup.path) return;
-    this.state.updateContent(backup.content);
+    this.state.setContentFromExternalSource(backup.content);
     this.state.pendingRecovery.set(null);
   }
 

@@ -58,6 +58,7 @@ describe('FileOperationsService — reliability/conflict handling', () => {
       lastKnownDiskMtime: 0,
       isMarkdown: true,
       isBinary: false,
+      contentRevision: 1,
     });
 
     await ops.save();
@@ -81,6 +82,7 @@ describe('FileOperationsService — reliability/conflict handling', () => {
       lastKnownDiskMtime: 50, // older than the 100 the mocked adapter returns
       isMarkdown: true,
       isBinary: false,
+      contentRevision: 1,
     });
 
     await ops.save();
@@ -104,6 +106,7 @@ describe('FileOperationsService — reliability/conflict handling', () => {
       lastKnownDiskMtime: 50,
       isMarkdown: true,
       isBinary: false,
+      contentRevision: 1,
     });
 
     await ops.overwriteAnyway();
@@ -126,13 +129,46 @@ describe('FileOperationsService — reliability/conflict handling', () => {
       lastKnownDiskMtime: 50,
       isMarkdown: true,
       isBinary: false,
+      contentRevision: 1,
     });
 
+    const revisionBefore = state.openFile()!.contentRevision;
     await ops.reloadFromDisk();
 
     expect(state.openFile()?.content).toBe('on-disk content');
     expect(state.openFile()?.dirty).toBe(false);
     expect(state.openFile()?.saveState).toBe('saved');
+    // Regression guard: reload keeps the same path, so EditorComponent only
+    // resyncs CodeMirror if contentRevision changed too (see EditorComponent).
+    expect(state.openFile()!.contentRevision).toBeGreaterThan(revisionBefore);
+  });
+
+  it('applyRecovery restores the backup content and bumps contentRevision so the editor resyncs (FR-13)', () => {
+    setup();
+    const handle = { name: 'notes.md' } as FileSystemFileHandle;
+    state.setOpenFile({
+      handle,
+      path: 'notes.md',
+      content: 'on-disk content',
+      dirty: false,
+      saveState: 'saved',
+      saveError: null,
+      saveErrorCode: null,
+      lastKnownDiskMtime: 100,
+      isMarkdown: true,
+      isBinary: false,
+      contentRevision: 1,
+    });
+    state.pendingRecovery.set({ path: 'notes.md', content: 'recovered backup content', savedAt: 200 });
+    const revisionBefore = state.openFile()!.contentRevision;
+    const pathBefore = state.openFile()!.path;
+
+    ops.applyRecovery();
+
+    expect(state.openFile()?.content).toBe('recovered backup content');
+    expect(state.openFile()?.path).toBe(pathBefore); // same path — this is exactly the case that broke before the fix
+    expect(state.openFile()!.contentRevision).toBeGreaterThan(revisionBefore);
+    expect(state.pendingRecovery()).toBeNull();
   });
 
   it('classifies a thrown FileSystemOperationError code through to save-error state', async () => {
@@ -151,6 +187,7 @@ describe('FileOperationsService — reliability/conflict handling', () => {
       lastKnownDiskMtime: 100, // matches mocked readFile, so it passes the mtime check
       isMarkdown: true,
       isBinary: false,
+      contentRevision: 1,
     });
 
     await ops.save();
@@ -174,6 +211,7 @@ describe('FileOperationsService — reliability/conflict handling', () => {
       lastKnownDiskMtime: 100,
       isMarkdown: true,
       isBinary: false,
+      contentRevision: 1,
     });
 
     await ops.regrantPermissionAndRetry();

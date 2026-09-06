@@ -28,6 +28,15 @@ export interface OpenFile {
   lastKnownDiskMtime: number;
   isMarkdown: boolean;
   isBinary: boolean;
+  /**
+   * Bumped whenever `content` is set from outside the editor's own typing
+   * (open, reload-from-disk, restore-backup) — EditorComponent resyncs
+   * CodeMirror's doc when this changes, not just when `path` changes, since
+   * "same path, freshly overwritten content" is exactly what reload/restore
+   * produce. `updateContent` (user typing) deliberately does NOT bump this,
+   * or every keystroke would fight CodeMirror's own cursor/undo state.
+   */
+  contentRevision: number;
 }
 
 /**
@@ -94,14 +103,31 @@ export class WorkspaceState {
     this.childrenCache.set(nextCache);
   }
 
+  private nextRevision = 1;
+
+  /** Opening/reopening a file is always an authoritative content push — bump the revision. */
   setOpenFile(file: OpenFile | null): void {
-    this.openFile.set(file);
+    this.openFile.set(file ? { ...file, contentRevision: this.nextRevision++ } : null);
   }
 
+  /** User-typed edits, reported by the editor itself — must NOT bump contentRevision (see OpenFile.contentRevision doc). */
   updateContent(content: string): void {
     const current = this.openFile();
     if (!current) return;
     this.openFile.set({ ...current, content, dirty: true, saveState: 'unsaved' });
+  }
+
+  /** Content pushed in from outside the editor while the path stays the same — e.g. FR-13 backup restore. */
+  setContentFromExternalSource(content: string): void {
+    const current = this.openFile();
+    if (!current) return;
+    this.openFile.set({
+      ...current,
+      content,
+      dirty: true,
+      saveState: 'unsaved',
+      contentRevision: this.nextRevision++,
+    });
   }
 
   markSaving(): void {

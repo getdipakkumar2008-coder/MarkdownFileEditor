@@ -43,15 +43,21 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
 
   private view?: EditorView;
   private lastLoadedPath: string | null = null;
+  private lastLoadedRevision = -1;
 
   constructor(private readonly state: WorkspaceState) {
     effect(() => {
       const file = this.state.openFile();
       if (!file || !this.view) return;
-      // Only reset the doc when a different file was opened — avoid
-      // clobbering cursor position / undo history on every content signal tick.
-      if (file.path !== this.lastLoadedPath) {
+      // Reset the doc when a different file was opened, OR when the same
+      // file's content was overwritten from outside the editor's own typing
+      // (reload-from-disk / restore-backup bump contentRevision without
+      // changing path — see WorkspaceState.OpenFile.contentRevision). Plain
+      // user keystrokes never reach this branch, so cursor/undo state is
+      // preserved for normal typing.
+      if (file.path !== this.lastLoadedPath || file.contentRevision !== this.lastLoadedRevision) {
         this.lastLoadedPath = file.path;
+        this.lastLoadedRevision = file.contentRevision;
         this.view.dispatch({
           changes: { from: 0, to: this.view.state.doc.length, insert: file.content },
         });
@@ -86,6 +92,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
 
     this.view = new EditorView({ state, parent: this.host.nativeElement });
     this.lastLoadedPath = this.state.openFile()?.path ?? null;
+    this.lastLoadedRevision = this.state.openFile()?.contentRevision ?? -1;
   }
 
   ngOnDestroy(): void {
