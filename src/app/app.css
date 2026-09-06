@@ -1,0 +1,37 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.tree-pane {
+  width: 240px;
+  flex: none;
+  border-right: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  overflow: auto;
+}
+
+.editor-pane,
+.preview-pane {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.editor-pane {
+  border-right: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}

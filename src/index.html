@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Defense-in-depth per Architecture.md §7: blocks inline script execution.
+         A self-hosted deployment behind a real server should set this as a real
+         response header instead — a <meta> CSP cannot cover frame-ancestors or
+         report-uri, but this is what a static-file host can offer. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'" />
+    <title>MdEditor</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="manifest" href="manifest.webmanifest" />
+  </head>
+  <body>
+    <app-root></app-root>
+    <noscript>Please enable JavaScript to continue using this application.</noscript>
+  </body>
+</html>

@@ -1,0 +1,37 @@
+<app-toolbar (openFolder)="onOpenFolder()" (save)="onSave()" />
+
+@if (state.pendingRecovery(); as backup) {
+  <app-recovery-dialog [backup]="backup" (restore)="onRestoreBackup()" (discard)="onDiscardBackup()" />
+}
+
+@if (showSaveIssueDialog()) {
+  <app-save-issue-dialog
+    [code]="state.openFile()!.saveErrorCode!"
+    [message]="state.openFile()!.saveError!"
+    (overwrite)="onOverwriteAnyway()"
+    (reload)="onReloadFromDisk()"
+    (regrant)="onRegrantPermission()"
+  />
+}
+
+<div class="layout">
+  <aside class="tree-pane">
+    <app-file-tree />
+  </aside>
+
+  @if (state.openFile()) {
+    <section class="editor-pane">
+      <app-editor (contentChanged)="onContentChanged($event)" (saveRequested)="onSave()" />
+    </section>
+
+    @if (state.openFile()!.isMarkdown) {
+      <section class="preview-pane">
+        <app-preview />
+      </section>
+    }
+  } @else {
+    <div class="empty-state">
+      <p>Open a folder to get started, then select a file.</p>
+    </div>
+  }
+</div>
