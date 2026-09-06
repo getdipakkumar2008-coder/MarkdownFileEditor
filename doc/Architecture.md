@@ -183,14 +183,16 @@ Scoped deliberately narrow — this is about the *running app* recovering from i
 
 Explicitly out of scope here: automatic dependency version bumps, automatic rollback of a bad deploy, and anything that writes to the repository on its own — see §13.
 
-## 13. Autonomous Maintenance Agent — Not Built, Gated on Explicit Guardrail Sign-off
+## 13. Autonomous Maintenance Agent — Resolved: Not Needed as a Standing Thing
 
-The user asked whether this project could be made "self-upgrading" via an autonomous agent that monitors and patches the codebase. This is architecturally and operationally distinct from §12 — it means something (an AI agent) has standing write access to the repository with no human in the loop per change. That is a real risk surface (a bad automated commit, a subtly-wrong "fix," credential/token exposure in a scheduled job) and is **not implemented**. Before any part of this is built, the following must be explicitly agreed, not assumed:
+The user asked whether this project could be made "self-upgrading" via an autonomous agent that monitors and patches the codebase. This is architecturally and operationally distinct from §12 — a *standing, unattended* agent means something has write access to the repository with no human in the loop per change, which is a real risk surface (a bad automated commit, a subtly-wrong "fix," credential/token exposure in a scheduled job).
 
-1. **Trigger model**: scheduled (e.g. nightly) vs. event-triggered (e.g. on CI failure) vs. purely on-demand (a human invokes it) — each has a different blast radius.
-2. **Write boundary**: the agent should never push directly to `main`. At minimum: a dedicated branch + PR, with required human approval before merge (branch protection enforced on GitHub, not just a convention).
-3. **Scope fence**: what the agent is allowed to touch — e.g. dependency patch/minor bumps and CI config only, vs. full source access. The narrower this is, the safer.
-4. **Rollback plan**: how a bad autonomous change gets reverted, and who is notified when the agent acts.
-5. **Secrets/credentials**: a scheduled agent needs its own scoped token, never the user's personal credentials, with the minimum permissions the scope fence requires.
+**Resolution (discussed and closed, not just deferred)**: the question was whether this is *possible*, not a request to stand one up. Walking through the five guardrails below collapsed the ask into something much smaller than "autonomous agent":
 
-Until these five are agreed in writing (this document is the place to record that), no scheduled/autonomous agent will be wired up against this repository.
+1. **Trigger model — resolved: on-demand only.** No scheduled or event-triggered mode. The user (or a future session) explicitly asks for a maintenance pass (e.g. "check and bump dependencies") when they want one.
+2. **Write boundary — moot under an on-demand trigger.** With a human present for every invocation, there's no unattended-commit scenario to gate against. A dependency-bump pass is just a normal session task: propose the change, human reviews the diff live, human says commit — the same flow already used throughout this project. No separate branch/PR ceremony needed beyond what any change already gets.
+3. **Scope fence — resolved: dependency version bumps only.** Nothing else. Not CI config, not source code, not a general "fix things" mandate.
+4. **Rollback plan — moot for the same reason as #2**: it's an ordinary commit a human watched happen; revert it the ordinary way if a bump breaks something.
+5. **Secrets/credentials — moot.** No scoped token or unattended credential is needed for an on-demand, human-present task; it uses whatever access the session already has.
+
+**Net effect**: there is no separate "autonomous agent" feature in this codebase, and none is planned. "Self-upgrading" in this project means: ask for a dependency-check pass when you want one, review it like any other change. If a genuinely unattended/scheduled mode is wanted later, this section's original five-point gate (scheduled trigger, PR-and-required-review boundary, explicit scope fence, a real rollback/notification plan, and a purpose-scoped credential) still applies and would need to be re-opened and agreed before building it.
