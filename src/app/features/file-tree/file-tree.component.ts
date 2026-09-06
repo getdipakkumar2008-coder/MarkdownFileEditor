@@ -1,8 +1,7 @@
-import { Component, computed, signal } from '@angular/core';
-import { ScrollingModule } from '@angular/cdk/scrolling';
+import { Component, ViewChild, computed, signal } from '@angular/core';
+import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { WorkspaceState } from '../../state/workspace-state';
 import { FileOperationsService } from './file-operations.service';
-import { TreeEntry } from '../../core/file-system-adapter';
 import { isMarkdownFile } from '../../adapters/filesystem/native-file-system-adapter';
 import { flattenTree, TreeRow } from './flatten-tree';
 import { ContextMenuComponent, ContextMenuAction } from './context-menu.component';
@@ -14,6 +13,8 @@ interface ContextMenuState {
   y: number;
   row: TreeRow | null; // null = right-clicked empty area (root-level actions only)
   items: ContextMenuAction[];
+  /** Element to restore focus to once the menu closes. */
+  triggerEl: HTMLElement | null;
 }
 
 type NamePromptMode =
@@ -29,26 +30,38 @@ interface NamePromptState {
 }
 
 /**
- * FR-1..4 (doc/specification.md §3.1): virtualized tree (CDK viewport, only
- * visible rows touch the DOM), lazy per-folder expansion, and the New
- * File/New Folder/Rename/Delete/Duplicate context menu.
+ * FR-1..4 (doc/specification.md §3.1) + Accessibility NFRs (§4): virtualized
+ * tree (CDK viewport, only visible rows touch the DOM), lazy per-folder
+ * expansion, and the New File/New Folder/Rename/Delete/Duplicate context
+ * menu — all reachable without a mouse via the WAI-ARIA treeview roving-
+ * tabindex pattern (Up/Down/Left/Right/Home/End/Enter, plus the Menu key or
+ * Shift+F10 for the context menu).
  */
 @Component({
   selector: 'app-file-tree',
   standalone: true,
   imports: [ScrollingModule, ContextMenuComponent, NamePromptDialogComponent, ConfirmDialogComponent],
   template: `
+    @if (state.hasWorkspace()) {
+      <div class="root-actions">
+        <button type="button" (click)="onMenuAction('new-file', null)">New File</button>
+        <button type="button" (click)="onMenuAction('new-folder', null)">New Folder</button>
+      </div>
+    }
+
     <cdk-virtual-scroll-viewport itemSize="28" class="tree-viewport" role="tree" aria-label="File explorer" (contextmenu)="onEmptyAreaContextMenu($event)">
       <div
-        *cdkVirtualFor="let row of rows()"
+        *cdkVirtualFor="let row of rows(); let i = index"
         class="tree-row"
         role="treeitem"
-        tabindex="0"
+        [attr.data-row-index]="i"
+        [attr.tabindex]="i === focusedIndex() ? 0 : -1"
         [attr.aria-level]="row.depth + 1"
         [attr.aria-expanded]="row.entry.kind === 'folder' ? row.expanded : null"
         [style.paddingLeft.px]="row.depth * 16 + 8"
-        (click)="onRowActivate(row)"
-        (keydown.enter)="onRowActivate(row)"
+        (click)="onRowClick(row, i)"
+        (focus)="focusedIndex.set(i)"
+        (keydown)="onKeydown($event, row, i)"
         (contextmenu)="onRowContextMenu($event, row)"
       >
         @if (row.entry.kind === 'folder') {
@@ -89,11 +102,23 @@ interface NamePromptState {
   styles: [
     `
       :host {
-        display: block;
+        display: flex;
+        flex-direction: column;
         height: 100%;
       }
+      .root-actions {
+        display: flex;
+        gap: 0.4rem;
+        padding: 0.4rem 0.5rem;
+        border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+        flex: none;
+      }
+      .root-actions button {
+        font-size: 0.8em;
+      }
       .tree-viewport {
-        height: 100%;
+        flex: 1;
+        min-height: 0;
       }
       .tree-row {
         display: flex;
@@ -104,10 +129,14 @@ interface NamePromptState {
         border-radius: 4px;
         white-space: nowrap;
       }
-      .tree-row:hover,
+      .tree-row:hover {
+        background: color-mix(in srgb, currentColor 10%, transparent);
+      }
+      .tree-row:focus-visible,
       .tree-row:focus {
         background: color-mix(in srgb, currentColor 10%, transparent);
-        outline: none;
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
       }
       .chevron,
       .chevron-spacer {
@@ -124,12 +153,15 @@ interface NamePromptState {
   ],
 })
 export class FileTreeComponent {
+  @ViewChild(CdkVirtualScrollViewport) private viewport?: CdkVirtualScrollViewport;
+
   readonly rows = computed<TreeRow[]>(() => {
     const root = this.state.rootHandle();
     if (!root) return [];
     return flattenTree(this.state.tree(), root, this.state.expandedPaths(), this.state.childrenCache());
   });
 
+  readonly focusedIndex = signal(0);
   readonly contextMenu = signal<ContextMenuState | null>(null);
   readonly namePrompt = signal<NamePromptState | null>(null);
   readonly deleteTarget = signal<TreeRow | null>(null);
@@ -143,7 +175,12 @@ export class FileTreeComponent {
     return isMarkdownFile(name);
   }
 
-  async onRowActivate(row: TreeRow): Promise<void> {
+  async onRowClick(row: TreeRow, index: number): Promise<void> {
+    this.focusedIndex.set(index);
+    await this.activate(row);
+  }
+
+  private async activate(row: TreeRow): Promise<void> {
     if (row.entry.kind === 'folder') {
       await this.ops.toggleFolder(row.entry, row.fullPath);
     } else {
@@ -151,23 +188,108 @@ export class FileTreeComponent {
     }
   }
 
+  async onKeydown(event: KeyboardEvent, row: TreeRow, index: number): Promise<void> {
+    const rows = this.rows();
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        await this.focusIndex(Math.min(index + 1, rows.length - 1));
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        await this.focusIndex(Math.max(index - 1, 0));
+        break;
+      case 'Home':
+        event.preventDefault();
+        await this.focusIndex(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        await this.focusIndex(rows.length - 1);
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        if (row.entry.kind === 'folder') {
+          if (!row.expanded) {
+            await this.ops.toggleFolder(row.entry, row.fullPath);
+          } else if (index + 1 < rows.length) {
+            await this.focusIndex(index + 1);
+          }
+        }
+        break;
+      case 'ArrowLeft':
+        event.preventDefault();
+        if (row.entry.kind === 'folder' && row.expanded) {
+          await this.ops.toggleFolder(row.entry, row.fullPath);
+        } else if (row.parentPath !== null) {
+          const parentIndex = rows.findIndex((r) => r.fullPath === row.parentPath);
+          if (parentIndex >= 0) await this.focusIndex(parentIndex);
+        }
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        await this.activate(row);
+        break;
+      case 'ContextMenu':
+        event.preventDefault();
+        this.openMenuNear(event.currentTarget as HTMLElement, row);
+        break;
+      case 'F10':
+        if (event.shiftKey) {
+          event.preventDefault();
+          this.openMenuNear(event.currentTarget as HTMLElement, row);
+        }
+        break;
+    }
+  }
+
+  /** Roving-tabindex focus move — scrolls the target row into the (virtualized) viewport first if needed. */
+  private async focusIndex(index: number): Promise<void> {
+    if (index < 0 || index >= this.rows().length) return;
+    this.focusedIndex.set(index);
+    this.viewport?.scrollToIndex(index, 'auto');
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const el = this.viewport?.elementRef.nativeElement.querySelector<HTMLElement>(`[data-row-index="${index}"]`);
+    el?.focus();
+  }
+
+  private itemsForRow(row: TreeRow): ContextMenuAction[] {
+    return row.entry.kind === 'folder'
+      ? [
+          { id: 'new-file', label: 'New File' },
+          { id: 'new-folder', label: 'New Folder' },
+          { id: 'rename', label: 'Rename' },
+          { id: 'delete', label: 'Delete', danger: true },
+        ]
+      : [
+          { id: 'rename', label: 'Rename' },
+          { id: 'duplicate', label: 'Duplicate' },
+          { id: 'delete', label: 'Delete', danger: true },
+        ];
+  }
+
   onRowContextMenu(event: MouseEvent, row: TreeRow): void {
     event.preventDefault();
     event.stopPropagation();
-    const items: ContextMenuAction[] =
-      row.entry.kind === 'folder'
-        ? [
-            { id: 'new-file', label: 'New File' },
-            { id: 'new-folder', label: 'New Folder' },
-            { id: 'rename', label: 'Rename' },
-            { id: 'delete', label: 'Delete', danger: true },
-          ]
-        : [
-            { id: 'rename', label: 'Rename' },
-            { id: 'duplicate', label: 'Duplicate' },
-            { id: 'delete', label: 'Delete', danger: true },
-          ];
-    this.contextMenu.set({ x: event.clientX, y: event.clientY, row, items });
+    this.contextMenu.set({
+      x: event.clientX,
+      y: event.clientY,
+      row,
+      items: this.itemsForRow(row),
+      triggerEl: event.currentTarget as HTMLElement,
+    });
+  }
+
+  private openMenuNear(target: HTMLElement, row: TreeRow): void {
+    const rect = target.getBoundingClientRect();
+    this.contextMenu.set({
+      x: rect.left,
+      y: rect.bottom,
+      row,
+      items: this.itemsForRow(row),
+      triggerEl: target,
+    });
   }
 
   onEmptyAreaContextMenu(event: MouseEvent): void {
@@ -182,11 +304,14 @@ export class FileTreeComponent {
         { id: 'new-file', label: 'New File' },
         { id: 'new-folder', label: 'New Folder' },
       ],
+      triggerEl: null,
     });
   }
 
   closeContextMenu(): void {
+    const menu = this.contextMenu();
     this.contextMenu.set(null);
+    menu?.triggerEl?.focus();
   }
 
   async onMenuAction(actionId: string, row: TreeRow | null): Promise<void> {

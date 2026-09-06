@@ -1,18 +1,30 @@
 import { Component, Input, output } from '@angular/core';
 import { SaveErrorCode } from '../../state/workspace-state';
+import { FocusTrapDirective } from './focus-trap.directive';
 
 /**
  * Reliability NFRs (doc/specification.md): never silently clobber a file
  * that changed externally, and never fail a save silently when permission
  * was revoked — both get an explicit modal with a real recovery action,
- * not just a toolbar error string.
+ * not just a toolbar error string. Escape only dismisses for the
+ * single-safe-action cases (not-found/disk-full/unknown) — external-mod and
+ * permission-revoked require an explicit pick, same reasoning as the
+ * recovery dialog.
  */
 @Component({
   selector: 'app-save-issue-dialog',
   standalone: true,
+  imports: [FocusTrapDirective],
   template: `
     <div class="backdrop" role="presentation">
-      <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="issue-title">
+      <div
+        class="dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="issue-title"
+        appFocusTrap
+        (escape)="onEscape()"
+      >
         <h2 id="issue-title">{{ title() }}</h2>
         <p>{{ message }}</p>
         <div class="actions">
@@ -67,6 +79,12 @@ export class SaveIssueDialogComponent {
   readonly reload = output<void>();
   readonly regrant = output<void>();
   readonly dismiss = output<void>();
+
+  onEscape(): void {
+    if (this.code !== 'external-modification' && this.code !== 'permission-revoked') {
+      this.dismiss.emit();
+    }
+  }
 
   title(): string {
     switch (this.code) {

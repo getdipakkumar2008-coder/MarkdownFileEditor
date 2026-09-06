@@ -1,1 +1,23 @@
 /* You can add global styles to this file, and also import other style files */
+
+/*
+ * Status color tokens — WCAG 2.1 AA requires >=4.5:1 contrast for normal
+ * text (doc/specification.md §4 Accessibility). Named CSS colors like
+ * "crimson"/"darkorange"/"seagreen" on a plain white/black background all
+ * fall short of that (roughly 2.5:1-4:1), so status text uses these
+ * verified tokens instead, with separate values for light/dark.
+ */
+:root {
+  color-scheme: light dark;
+  --status-success: #1b5e20; /* ~7.5:1 on white */
+  --status-warning: #8a5300; /* ~5.9:1 on white */
+  --status-danger: #991b1b; /* ~7.3:1 on white */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --status-success: #81c995; /* ~8:1 on typical dark Canvas */
+    --status-warning: #f2b93d; /* ~9:1 on typical dark Canvas */
+    --status-danger: #f28b82; /* ~7:1 on typical dark Canvas */
+  }
+}

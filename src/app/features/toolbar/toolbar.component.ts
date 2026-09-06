@@ -15,7 +15,7 @@ import { WorkspaceState } from '../../state/workspace-state';
         Save
       </button>
       <span class="mode-badge">{{ state.mode === 'native' ? 'Native file access' : 'Fallback mode (upload/download)' }}</span>
-      <span class="save-state" [class]="state.saveState()">{{ saveLabel() }}</span>
+      <span class="save-state" role="status" aria-live="polite" [class]="state.saveState()">{{ saveLabel() }}</span>
     </div>
   `,
   styles: [
@@ -32,16 +32,16 @@ import { WorkspaceState } from '../../state/workspace-state';
         opacity: 0.7;
       }
       .save-state.saved {
-        color: seagreen;
+        color: var(--status-success);
       }
       .save-state.saving {
         opacity: 0.7;
       }
       .save-state.unsaved {
-        color: darkorange;
+        color: var(--status-warning);
       }
       .save-state.error {
-        color: crimson;
+        color: var(--status-danger);
       }
     `,
   ],

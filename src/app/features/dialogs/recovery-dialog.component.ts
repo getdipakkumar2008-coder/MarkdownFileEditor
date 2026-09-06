@@ -1,14 +1,19 @@
 import { Component, Input, output } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { BackupRecord } from '../../core/backup-store';
+import { FocusTrapDirective } from './focus-trap.directive';
 
-/** FR-13: recovery is always an explicit user choice, never auto-applied. */
+/**
+ * FR-13: recovery is always an explicit user choice, never auto-applied.
+ * No Escape shortcut here on purpose — neither "keep disk" nor "restore
+ * backup" is a safe no-op default, so the user must pick one explicitly.
+ */
 @Component({
   selector: 'app-recovery-dialog',
   standalone: true,
   template: `
     <div class="backdrop" role="presentation">
-      <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="recovery-title">
+      <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="recovery-title" appFocusTrap>
         <h2 id="recovery-title">Unsaved backup found</h2>
         <p>
           A newer, unsaved version of <strong>{{ backup.path }}</strong> was recovered from a
@@ -52,7 +57,7 @@ import { BackupRecord } from '../../core/backup-store';
       }
     `,
   ],
-  imports: [DatePipe],
+  imports: [DatePipe, FocusTrapDirective],
 })
 export class RecoveryDialogComponent {
   @Input({ required: true }) backup!: BackupRecord;

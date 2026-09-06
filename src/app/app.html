@@ -15,17 +15,17 @@
 }
 
 <div class="layout">
-  <aside class="tree-pane">
+  <aside class="tree-pane" aria-label="File explorer panel">
     <app-file-tree />
   </aside>
 
   @if (state.openFile()) {
-    <section class="editor-pane">
+    <section class="editor-pane" aria-label="Editor">
       <app-editor (contentChanged)="onContentChanged($event)" (saveRequested)="onSave()" />
     </section>
 
     @if (state.openFile()!.isMarkdown) {
-      <section class="preview-pane">
+      <section class="preview-pane" aria-label="Markdown preview">
         <app-preview />
       </section>
     }

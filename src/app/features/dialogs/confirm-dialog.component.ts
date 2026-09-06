@@ -1,12 +1,14 @@
 import { Component, Input, output } from '@angular/core';
+import { FocusTrapDirective } from './focus-trap.directive';
 
 /** CLAUDE.md rule 5: delete (and any irreversible op) requires an explicit confirm dialog — no silent/optimistic deletes. */
 @Component({
   selector: 'app-confirm-dialog',
   standalone: true,
+  imports: [FocusTrapDirective],
   template: `
     <div class="backdrop" role="presentation">
-      <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" appFocusTrap (escape)="cancel.emit()">
         <h2 id="confirm-title">{{ title }}</h2>
         <p>{{ message }}</p>
         <div class="actions">
@@ -42,7 +44,7 @@ import { Component, Input, output } from '@angular/core';
         margin-top: 1rem;
       }
       .danger {
-        color: crimson;
+        color: var(--status-danger);
         font-weight: 600;
       }
     `,

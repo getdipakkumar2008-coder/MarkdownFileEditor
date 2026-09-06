@@ -1,24 +1,18 @@
-import { Component, ElementRef, Input, ViewChild, AfterViewInit, output, signal } from '@angular/core';
+import { Component, Input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { FocusTrapDirective } from './focus-trap.directive';
 
 /** Used for New File / New Folder / Rename — validates a bare filename before emitting confirm. */
 @Component({
   selector: 'app-name-prompt-dialog',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, FocusTrapDirective],
   template: `
     <div class="backdrop" role="presentation">
-      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="prompt-title" appFocusTrap (escape)="cancel.emit()">
         <h2 id="prompt-title">{{ title }}</h2>
         <form (ngSubmit)="onSubmit()">
-          <input
-            #nameInput
-            type="text"
-            [(ngModel)]="value"
-            name="entryName"
-            [attr.aria-label]="title"
-            autocomplete="off"
-          />
+          <input type="text" [(ngModel)]="value" name="entryName" [attr.aria-label]="title" autocomplete="off" />
           @if (error()) {
             <p class="error" role="alert">{{ error() }}</p>
           }
@@ -57,7 +51,7 @@ import { FormsModule } from '@angular/forms';
         margin-top: 0.5rem;
       }
       .error {
-        color: crimson;
+        color: var(--status-danger);
         font-size: 0.85em;
       }
       .actions {
@@ -72,12 +66,10 @@ import { FormsModule } from '@angular/forms';
     `,
   ],
 })
-export class NamePromptDialogComponent implements AfterViewInit {
+export class NamePromptDialogComponent implements OnInit {
   @Input({ required: true }) title!: string;
   @Input() initialValue = '';
   @Input() confirmLabel = 'Create';
-
-  @ViewChild('nameInput') nameInput?: ElementRef<HTMLInputElement>;
 
   readonly confirm = output<string>();
   readonly cancel = output<void>();
@@ -85,12 +77,9 @@ export class NamePromptDialogComponent implements AfterViewInit {
   value = '';
   readonly error = signal<string | null>(null);
 
-  ngAfterViewInit(): void {
+  ngOnInit(): void {
+    // appFocusTrap focuses+selects the first focusable element (this input) after view init.
     this.value = this.initialValue;
-    queueMicrotask(() => {
-      this.nameInput?.nativeElement.select();
-      this.nameInput?.nativeElement.focus();
-    });
   }
 
   onSubmit(): void {

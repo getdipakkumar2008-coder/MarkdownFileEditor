@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, Input, ViewChild, AfterViewInit, output } from '@angular/core';
+import { Component, ElementRef, HostListener, Input, ViewChild, ViewChildren, QueryList, AfterViewInit, output } from '@angular/core';
 
 export interface ContextMenuAction {
   id: string;
@@ -8,16 +8,24 @@ export interface ContextMenuAction {
 
 /**
  * FR-3 (doc/specification.md §3.1): right-click and keyboard-equivalent
- * context menu. Dismisses on outside click, Escape, or scroll — standard
- * context-menu behavior.
+ * context menu, following the WAI-ARIA menu pattern — auto-focuses the
+ * first item, Up/Down/Home/End roam between items, Enter/Space activates,
+ * Escape/outside-click/scroll dismisses.
  */
 @Component({
   selector: 'app-context-menu',
   standalone: true,
   template: `
     <ul #menu class="menu" role="menu" [style.left.px]="x" [style.top.px]="y">
-      @for (item of items; track item.id) {
-        <li role="menuitem" tabindex="0" [class.danger]="item.danger" (click)="onSelect(item.id)" (keydown.enter)="onSelect(item.id)">
+      @for (item of items; track item.id; let i = $index) {
+        <li
+          #menuItem
+          role="menuitem"
+          tabindex="-1"
+          [class.danger]="item.danger"
+          (click)="onSelect(item.id)"
+          (keydown)="onItemKeydown($event, i)"
+        >
           {{ item.label }}
         </li>
       }
@@ -42,13 +50,17 @@ export interface ContextMenuAction {
         border-radius: 4px;
         cursor: pointer;
       }
-      li:hover,
+      li:hover {
+        background: color-mix(in srgb, currentColor 12%, transparent);
+      }
+      li:focus-visible,
       li:focus {
         background: color-mix(in srgb, currentColor 12%, transparent);
-        outline: none;
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
       }
       li.danger {
-        color: crimson;
+        color: var(--status-danger);
       }
     `,
   ],
@@ -59,6 +71,7 @@ export class ContextMenuComponent implements AfterViewInit {
   @Input({ required: true }) items: ContextMenuAction[] = [];
 
   @ViewChild('menu') menuRef?: ElementRef<HTMLUListElement>;
+  @ViewChildren('menuItem') menuItems?: QueryList<ElementRef<HTMLLIElement>>;
 
   readonly select = output<string>();
   readonly dismiss = output<void>();
@@ -66,16 +79,47 @@ export class ContextMenuComponent implements AfterViewInit {
   ngAfterViewInit(): void {
     // Keep the menu fully on-screen even when opened near the viewport edge.
     const el = this.menuRef?.nativeElement;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const overflowX = rect.right - window.innerWidth;
-    const overflowY = rect.bottom - window.innerHeight;
-    if (overflowX > 0) el.style.left = `${this.x - overflowX}px`;
-    if (overflowY > 0) el.style.top = `${this.y - overflowY}px`;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const overflowX = rect.right - window.innerWidth;
+      const overflowY = rect.bottom - window.innerHeight;
+      if (overflowX > 0) el.style.left = `${this.x - overflowX}px`;
+      if (overflowY > 0) el.style.top = `${this.y - overflowY}px`;
+    }
+    queueMicrotask(() => this.menuItems?.first?.nativeElement.focus());
   }
 
   onSelect(id: string): void {
     this.select.emit(id);
+  }
+
+  onItemKeydown(event: KeyboardEvent, index: number): void {
+    const items = this.menuItems?.toArray() ?? [];
+    if (items.length === 0) return;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        items[(index + 1) % items.length].nativeElement.focus();
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        items[(index - 1 + items.length) % items.length].nativeElement.focus();
+        break;
+      case 'Home':
+        event.preventDefault();
+        items[0].nativeElement.focus();
+        break;
+      case 'End':
+        event.preventDefault();
+        items[items.length - 1].nativeElement.focus();
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        this.onSelect(this.items[index].id);
+        break;
+    }
   }
 
   @HostListener('document:click')
