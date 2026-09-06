@@ -19,13 +19,13 @@ Companion sections: §1–§13 in this document and `doc/specification.md`.
 
 ```mermaid
 flowchart TB
-  subgraph L1[Presentation Layer (Angular standalone components)]
+  subgraph L1["Presentation Layer (Angular standalone components)"]
     FileTree[FileTreeComponent]
     Toolbar[ToolbarComponent]
     EditorPane[EditorPaneComponent]
     PreviewPane[PreviewPaneComponent]
     SaveState[SaveStateIndicatorComponent]
-    Dialogs[Dialogs: Confirm/Recover/Conflict]
+    Dialogs["Dialogs: Confirm/Recover/Conflict"]
   end
 
   subgraph L2[Application Services Layer]
@@ -35,27 +35,27 @@ flowchart TB
     SearchSvc[SearchService]
   end
 
-  subgraph L3[Domain Adapters Layer (interfaces + impls)]
-    FSAdapterI[FileSystemAdapter (interface)]
+  subgraph L3["Domain Adapters Layer (interfaces + impls)"]
+    FSAdapterI["FileSystemAdapter (interface)"]
     NativeFS[NativeFileSystemAdapter]
     FallbackFS[FallbackFileSystemAdapter]
-    RendererI[MarkdownRenderer (interface)]
-    RendererImpl[MarkdownRendererImpl + DOMPurify]
-    BackupI[BackupStore (interface)]
+    RendererI["MarkdownRenderer (interface)"]
+    RendererImpl["MarkdownRendererImpl + DOMPurify"]
+    BackupI["BackupStore (interface)"]
     IdbBackup[IndexedDbBackupStore]
-    ErrI[ErrorReporter (interface)]
+    ErrI["ErrorReporter (interface)"]
     NoopErr[NoopErrorReporter]
     SentryErr[SentryErrorReporter]
     Capability[FileSystemCapabilityDetector]
   end
 
-  subgraph L4[Platform APIs / Libraries]
+  subgraph L4["Platform APIs / Libraries"]
     FSAPI[File System Access API]
-    InputFallback[<input type=file webkitdirectory> + browser download]
+    InputFallback["input[type=file webkitdirectory] + browser download"]
     IDB[IndexedDB]
     SW[Angular Service Worker]
     CM6[CodeMirror 6]
-    MDLib[markdown-it/remark]
+    MDLib["markdown-it/remark"]
     Purify[DOMPurify]
   end
 
@@ -308,7 +308,7 @@ flowchart LR
   SW[Angular Service Worker]
   IDB[(IndexedDB BackupStore)]
   FSNative[File System Access API]
-  FSFallback[Input-file + Download fallback]
+  FSFallback["Input-file + Download fallback"]
   LocalFiles[(User local files)]
 
   User --> Browser
