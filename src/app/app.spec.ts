@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideServiceWorker } from '@angular/service-worker';
 import { App } from './app';
 import 'fake-indexeddb/auto';
 import { FILE_SYSTEM_ADAPTER } from './core/file-system-adapter';
@@ -19,6 +20,9 @@ describe('App', () => {
         { provide: MARKDOWN_RENDERER, useClass: MarkdownItRenderer },
         { provide: BACKUP_STORE, useClass: IndexedDbBackupStore },
         { provide: ERROR_REPORTER, useClass: NoopErrorReporter },
+        // Disabled — no ngsw-worker.js in the test environment — but this
+        // registers SwUpdate for DI, which UpdateBannerComponent needs.
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
       ],
     }).compileComponents();
   });

@@ -10,6 +10,13 @@ import { ERROR_REPORTER, ErrorReporter } from '../../core/error-reporter';
 import { isSupportedTextFile } from '../../adapters/filesystem/native-file-system-adapter';
 import { OpenFile, WorkspaceState } from '../../state/workspace-state';
 
+/** Architecture.md §12: retry only unclassified (possibly transient) failures — never a classified one that needs a human decision. */
+const RETRY_DELAYS_MS = [300, 900];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * FR-1, FR-5, FR-7 (doc/specification.md §3.1–3.2): open a folder, open a
  * file, save in place. No platform File System API call happens outside
@@ -17,6 +24,9 @@ import { OpenFile, WorkspaceState } from '../../state/workspace-state';
  */
 @Injectable({ providedIn: 'root' })
 export class FileOperationsService {
+  /** Architecture.md §12: report the backup store being unusable once per session, not on every keystroke. */
+  private backupUnavailableReported = false;
+
   constructor(
     @Inject(FILE_SYSTEM_ADAPTER) private readonly adapter: FileSystemAdapter,
     @Inject(BACKUP_STORE) private readonly backupStore: BackupStore,
@@ -55,7 +65,7 @@ export class FileOperationsService {
     // FR-13: offer recovery only when the backup is strictly newer than the
     // on-disk save — never auto-apply it.
     if (!result.isBinary) {
-      const backup = await this.backupStore.get(path);
+      const backup = await this.safeBackupCall(() => this.backupStore.get(path), 'read');
       if (backup && backup.savedAt > result.lastModified && backup.content !== result.content) {
         this.state.pendingRecovery.set(backup);
       }
@@ -76,7 +86,7 @@ export class FileOperationsService {
     const backup = this.state.pendingRecovery();
     this.state.pendingRecovery.set(null);
     if (backup) {
-      await this.backupStore.remove(backup.path);
+      await this.safeBackupCall(() => this.backupStore.remove(backup.path), 'write');
     }
   }
 
@@ -119,12 +129,15 @@ export class FileOperationsService {
           return;
         }
       }
-      await this.adapter.writeFile(file.handle, file.content);
+      await this.writeWithRetry(file.handle, file.content);
       const after = await this.adapter.readFile(file.handle);
       this.state.markSaved(after.lastModified);
       // Keep the backup in step with a successful disk save so a later open
       // doesn't offer a stale recovery prompt for content already on disk.
-      await this.backupStore.put({ path: file.path, content: file.content, savedAt: after.lastModified });
+      await this.safeBackupCall(
+        () => this.backupStore.put({ path: file.path, content: file.content, savedAt: after.lastModified }),
+        'write'
+      );
     } catch (err) {
       const code = err instanceof FileSystemOperationError ? err.code : 'unknown';
       const message = err instanceof Error ? err.message : 'Unknown error while saving.';
@@ -134,9 +147,52 @@ export class FileOperationsService {
       this.errorReporter.report(err, { code, operation: 'save' });
       // Disk write failed — this is exactly the case the IndexedDB backup
       // exists for, so still record it even though the disk write did not succeed.
-      await this.backupStore
-        .put({ path: file.path, content: file.content, savedAt: Date.now() })
-        .catch(() => undefined);
+      await this.safeBackupCall(
+        () => this.backupStore.put({ path: file.path, content: file.content, savedAt: Date.now() }),
+        'write'
+      );
+    }
+  }
+
+  /**
+   * Architecture.md §12: retries only an unclassified ('unknown') write
+   * failure — a possibly-transient platform hiccup (momentary OS-level
+   * lock, flaky external drive) — up to twice with backoff. Any classified
+   * error (permission-revoked, disk-full, not-found) is rethrown
+   * immediately: those need the human decision the save-issue dialog
+   * already provides, not a silent retry.
+   */
+  private async writeWithRetry(handle: FileSystemFileHandle, content: string): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.adapter.writeFile(handle, content);
+        return;
+      } catch (err) {
+        const code = err instanceof FileSystemOperationError ? err.code : 'unknown';
+        if (code !== 'unknown' || attempt >= RETRY_DELAYS_MS.length) {
+          throw err;
+        }
+        await sleep(RETRY_DELAYS_MS[attempt]);
+      }
+    }
+  }
+
+  /**
+   * Architecture.md §12: the IndexedDB backup store is a safety net, not
+   * the primary save path — if it's unusable (quota exceeded, storage
+   * corrupted, private-browsing restrictions), that must degrade to "crash
+   * recovery unavailable this session," never block or crash a disk save.
+   * Reports once per session, not on every keystroke.
+   */
+  private async safeBackupCall<T>(fn: () => Promise<T>, kind: 'read' | 'write'): Promise<T | undefined> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!this.backupUnavailableReported) {
+        this.backupUnavailableReported = true;
+        this.errorReporter.report(err, { code: 'unknown', operation: `backup-${kind}` });
+      }
+      return undefined;
     }
   }
 

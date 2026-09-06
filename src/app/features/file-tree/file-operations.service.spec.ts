@@ -308,3 +308,118 @@ describe('FileOperationsService — tree expansion and scoped CRUD refresh', () 
     expect(state.tree()).toEqual([]);
   });
 });
+
+describe('FileOperationsService — Architecture.md §12 runtime resilience', () => {
+  let state: WorkspaceState;
+  let ops: FileOperationsService;
+  let adapter: FileSystemAdapter;
+
+  function setup(adapterOverrides: Partial<FileSystemAdapter> = {}) {
+    adapter = makeFakeAdapter(adapterOverrides);
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: FILE_SYSTEM_ADAPTER, useValue: adapter },
+        { provide: BACKUP_STORE, useClass: IndexedDbBackupStore },
+        { provide: ERROR_REPORTER, useClass: NoopErrorReporter },
+      ],
+    });
+    state = TestBed.inject(WorkspaceState);
+    ops = TestBed.inject(FileOperationsService);
+  }
+
+  function makeDirtyOpenFile() {
+    return {
+      handle: {} as FileSystemFileHandle,
+      path: 'notes.md',
+      content: 'edited',
+      dirty: true,
+      saveState: 'unsaved' as const,
+      saveError: null,
+      saveErrorCode: null,
+      lastKnownDiskMtime: 100, // matches makeFakeAdapter's default readFile mtime, so it passes the conflict check
+      isMarkdown: true,
+      isBinary: false,
+      contentRevision: 1,
+    };
+  }
+
+  // Real timers deliberately, not fake ones: fake-indexeddb (the backup
+  // store's real backing implementation in these tests) schedules its own
+  // internal setTimeout(0) to resolve requests, which hangs indefinitely
+  // under vi.useFakeTimers() unless painstakingly advanced in lockstep —
+  // simpler and just as correct to let the ~1.2s worst-case retry delay
+  // actually elapse for real here.
+
+  it(
+    'retries an unclassified write failure and succeeds once the underlying call recovers',
+    async () => {
+      const writeFile = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('transient glitch'))
+        .mockResolvedValueOnce(undefined);
+      setup({ writeFile });
+      state.rootHandle.set(null);
+      state.setOpenFile(makeDirtyOpenFile());
+
+      await ops.save();
+
+      expect(writeFile).toHaveBeenCalledTimes(2);
+      expect(state.openFile()?.saveState).toBe('saved');
+    },
+    10_000
+  );
+
+  it(
+    'gives up after the retry budget and surfaces the error',
+    async () => {
+      const writeFile = vi.fn().mockRejectedValue(new Error('still broken'));
+      setup({ writeFile });
+      state.rootHandle.set(null);
+      state.setOpenFile(makeDirtyOpenFile());
+
+      await ops.save();
+
+      expect(writeFile).toHaveBeenCalledTimes(3); // initial attempt + 2 retries
+      expect(state.openFile()?.saveState).toBe('error');
+      expect(state.openFile()?.saveErrorCode).toBe('unknown');
+    },
+    10_000
+  );
+
+  it('does NOT retry a classified error (e.g. disk-full) — surfaces it immediately for the human decision', async () => {
+    const writeFile = vi.fn().mockRejectedValue(new FileSystemOperationError('disk-full', 'Disk is full.'));
+    setup({ writeFile });
+    state.rootHandle.set(null);
+    state.setOpenFile(makeDirtyOpenFile());
+
+    await ops.save();
+
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(state.openFile()?.saveErrorCode).toBe('disk-full');
+  });
+
+  it('degrades gracefully when the backup store is unusable — disk save still succeeds', async () => {
+    adapter = makeFakeAdapter();
+    const brokenBackupStore = {
+      get: vi.fn(),
+      put: vi.fn().mockRejectedValue(new Error('quota exceeded')),
+      remove: vi.fn(),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: FILE_SYSTEM_ADAPTER, useValue: adapter },
+        { provide: BACKUP_STORE, useValue: brokenBackupStore },
+        { provide: ERROR_REPORTER, useClass: NoopErrorReporter },
+      ],
+    });
+    state = TestBed.inject(WorkspaceState);
+    ops = TestBed.inject(FileOperationsService);
+    state.rootHandle.set(null);
+    state.setOpenFile(makeDirtyOpenFile());
+
+    await expect(ops.save()).resolves.toBeUndefined();
+
+    expect(state.openFile()?.saveState).toBe('saved'); // disk save unaffected by backup failure
+    expect(brokenBackupStore.put).toHaveBeenCalled(); // it was attempted, just failed harmlessly
+  });
+});

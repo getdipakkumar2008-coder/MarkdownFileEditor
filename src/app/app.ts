@@ -5,6 +5,7 @@ import { EditorComponent } from './features/editor/editor.component';
 import { PreviewComponent } from './features/preview/preview.component';
 import { RecoveryDialogComponent } from './features/dialogs/recovery-dialog.component';
 import { SaveIssueDialogComponent } from './features/dialogs/save-issue-dialog.component';
+import { UpdateBannerComponent } from './features/update/update-banner.component';
 import { FileOperationsService } from './features/file-tree/file-operations.service';
 import { WorkspaceState } from './state/workspace-state';
 import { AutosaveService } from './state/autosave.service';
@@ -21,6 +22,7 @@ const MODAL_ERROR_CODES = new Set(['external-modification', 'permission-revoked'
     PreviewComponent,
     RecoveryDialogComponent,
     SaveIssueDialogComponent,
+    UpdateBannerComponent,
   ],
   styleUrl: './app.css',
   templateUrl: './app.html',

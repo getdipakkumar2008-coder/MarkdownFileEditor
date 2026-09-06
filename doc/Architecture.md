@@ -1,7 +1,6 @@
 # Architecture — Markdown & Text File Editor (v1)
 
-Status: Draft for review — no implementation started.
-Companion to `specification.md`. Read that first for the *what*; this is the *how*.
+Status: v1 implemented — see `specification.md`'s Status line for current verification state. Companion to `specification.md`. Read that first for the *what*; this is the *how*.
 
 ## 1. Architectural Style
 
@@ -172,3 +171,26 @@ This is explicitly a seam, not a spec — no auth UI, no entitlement checks, no 
 - No server-side rendering, no SSR-hydration concerns.
 - No multi-tenant data model — nothing to design for since there is no server-side data at all in v1.
 - No design for concurrent multi-tab editing of the same file beyond the external-modification check in §3 — two tabs open on the same file is treated as "external modification," not as a merge scenario.
+
+## 12. Runtime Resilience ("self-healing" / "self-evaluating")
+
+Scoped deliberately narrow — this is about the *running app* recovering from its own failure modes, not an autonomous process that modifies the codebase (that's a separate, explicitly-gated concern — see §13).
+
+- **Retry-with-backoff**: `FileOperationsService.save()` retries a write up to 2 times (300ms, then 900ms) only for the `'unknown'` error code — i.e. an unclassified platform failure that might be transient (a momentary OS-level lock, a flaky external drive). It does **not** retry `permission-revoked`, `external-modification`, `not-found`, or `disk-full` — those are correctly-classified conditions that need a human decision (via the existing save-issue dialog), and silently retrying past them would be exactly the "silently clobber" behavior the spec forbids.
+- **Backup-store degradation**: if `IndexedDbBackupStore` itself fails to open (quota exceeded, browser storage corrupted, private-browsing restrictions), the app must not lose its primary function (saving to disk) — every `backupStore` call in the save/autosave path is wrapped so a backup failure degrades to "crash-recovery is unavailable this session" (reported once via `ErrorReporter`, not resurfaced on every keystroke) rather than blocking or crashing the disk-save path.
+- **Update-available UI**: `SwUpdate` (from `@angular/service-worker`) is subscribed for `VERSION_READY` events; the app was already fetching updates in the background but never told the user — a small toast now offers "Reload to update."
+- **CI health gates**: `npm audit --audit-level=high` runs in CI (fails the build on high/critical dependency vulnerabilities) alongside the existing build-time bundle budget (angular.json `budgets`, already enforced — a bundle-size regression fails the production build today, not a new mechanism).
+
+Explicitly out of scope here: automatic dependency version bumps, automatic rollback of a bad deploy, and anything that writes to the repository on its own — see §13.
+
+## 13. Autonomous Maintenance Agent — Not Built, Gated on Explicit Guardrail Sign-off
+
+The user asked whether this project could be made "self-upgrading" via an autonomous agent that monitors and patches the codebase. This is architecturally and operationally distinct from §12 — it means something (an AI agent) has standing write access to the repository with no human in the loop per change. That is a real risk surface (a bad automated commit, a subtly-wrong "fix," credential/token exposure in a scheduled job) and is **not implemented**. Before any part of this is built, the following must be explicitly agreed, not assumed:
+
+1. **Trigger model**: scheduled (e.g. nightly) vs. event-triggered (e.g. on CI failure) vs. purely on-demand (a human invokes it) — each has a different blast radius.
+2. **Write boundary**: the agent should never push directly to `main`. At minimum: a dedicated branch + PR, with required human approval before merge (branch protection enforced on GitHub, not just a convention).
+3. **Scope fence**: what the agent is allowed to touch — e.g. dependency patch/minor bumps and CI config only, vs. full source access. The narrower this is, the safer.
+4. **Rollback plan**: how a bad autonomous change gets reverted, and who is notified when the agent acts.
+5. **Secrets/credentials**: a scheduled agent needs its own scoped token, never the user's personal credentials, with the minimum permissions the scope fence requires.
+
+Until these five are agreed in writing (this document is the place to record that), no scheduled/autonomous agent will be wired up against this repository.
