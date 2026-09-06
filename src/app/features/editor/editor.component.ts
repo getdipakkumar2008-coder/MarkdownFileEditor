@@ -7,12 +7,23 @@ import {
   effect,
   output,
 } from '@angular/core';
-import { EditorState } from '@codemirror/state';
+import { Annotation, EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, historyKeymap, history } from '@codemirror/commands';
 import { searchKeymap, search } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
 import { WorkspaceState } from '../../state/workspace-state';
+
+/**
+ * Tags a transaction as a programmatic content reset (open/switch file,
+ * reload-from-disk, restore-backup) rather than real user typing.
+ * CodeMirror's updateListener fires on ANY docChanged transaction — without
+ * this, our own `view.dispatch()` resets would be indistinguishable from
+ * user keystrokes and would spuriously re-mark a freshly-loaded file as
+ * dirty (confirmed via manual QA: reload-from-disk showed "Unsaved
+ * changes" immediately, with nothing typed).
+ */
+const programmaticReset = Annotation.define<boolean>();
 
 /**
  * FR-8..10 (doc/specification.md §3.3): CodeMirror 6 is the only editor
@@ -60,6 +71,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
         this.lastLoadedRevision = file.contentRevision;
         this.view.dispatch({
           changes: { from: 0, to: this.view.state.doc.length, insert: file.content },
+          annotations: programmaticReset.of(true),
         });
       }
     });
@@ -80,9 +92,10 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     ]);
 
     const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        this.contentChanged.emit(update.state.doc.toString());
-      }
+      if (!update.docChanged) return;
+      const isProgrammatic = update.transactions.some((tr) => tr.annotation(programmaticReset));
+      if (isProgrammatic) return;
+      this.contentChanged.emit(update.state.doc.toString());
     });
 
     const state = EditorState.create({

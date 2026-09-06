@@ -1,6 +1,6 @@
 # Specification — Markdown & Text File Editor (v1)
 
-Status: v1 implemented (all `doc/skill.md` build phases complete). Automated coverage is now the full stack called for by this document — unit, integration, and Playwright E2E (Chromium + Firefox) — wired into GitHub Actions CI; see `doc/Architecture.md` §8. **Not yet done: a manual QA pass in real Chrome/Firefox/Safari, and a real Safari/WebKit run** — everything below has been verified by automated tests and production builds, but not by a human clicking through the running app, and Playwright's `webkit` project is not a substitute for actual Safari.
+Status: v1 implemented (all `doc/skill.md` build phases complete). Automated coverage is the full stack called for by this document — unit, integration, and Playwright E2E (Chromium + Firefox) — wired into GitHub Actions CI; see `doc/Architecture.md` §8. **Manual QA in real Chrome (native file access mode) is done** — open/edit/save, live preview + XSS sanitization, rename/create/delete via context menu (all verified against the real file on disk, not just app state), keyboard-only tree navigation, and the external-modification conflict dialog were all driven by a human in an actual Chrome window and found working. This pass also caught and fixed one real bug that no automated test had caught: reload-from-disk/restore-backup spuriously marked a freshly-loaded file as "Unsaved changes" because CodeMirror's change listener couldn't distinguish a programmatic content reset from real typing (fixed via a CodeMirror transaction annotation; see `EditorComponent`). **Not yet done: a manual pass in real Firefox (fallback mode) and Safari** — Firefox's fallback mode is only automated-tested (Playwright), and Safari has no coverage at all, automated or manual (Playwright's `webkit` project is not a substitute for actual Safari).
 Source: `Product_Markdown_Editor_Build_Prompt.md` (business build prompt)
 Decisions confirmed with business/product owner on 2026-09-06:
 
@@ -111,14 +111,14 @@ Numbered FR- IDs below are the traceability anchor for design docs and tests. Ea
 
 Mirrors the business doc's checklist, each item traceable to FR-IDs above. Checkboxes stay unchecked until verified by a human in a real browser, not just by automated tests — see the Status line at the top of this document for what's actually been done so far.
 
-- [ ] US-1/FR-1 — Open folder, working file tree
-- [ ] US-2,4/FR-5,7 — Open, edit, save `.md` file; persisted to real disk file
-- [ ] US-3/FR-16-18 — Live preview renders, verified sanitized against an XSS payload corpus
-- [ ] US-5/FR-11-15 — Autosave + crash recovery function; tested via forced tab-close mid-edit
-- [ ] US-6/FR-3,5,6 — Create/rename/delete with confirmation and validation
-- [ ] US-8/FR-… — Fallback mode functions on non-Chromium browser, mode is visibly labeled
-- [ ] US-10 — Full keyboard navigation, no mouse required
-- [ ] Automated suite (unit + integration + e2e) green in CI
+- [x] US-1/FR-1 — Open folder, working file tree (manually verified in real Chrome, native mode)
+- [x] US-2,4/FR-5,7 — Open, edit, save `.md` file; persisted to real disk file (manually verified — checked the actual file content on disk, not just app state)
+- [x] US-3/FR-16-18 — Live preview renders, verified sanitized against an XSS payload corpus (automated: 5-payload corpus in E2E; manually confirmed the `<script>` case in real Chrome — stripped, did not execute)
+- [ ] US-5/FR-11-15 — Autosave + crash recovery function; tested via forced tab-close mid-edit (autosave debounce and reload-from-disk were manually verified; the specific forced-tab-close-then-reopen crash-recovery-prompt flow was not run manually — see E2E instead)
+- [x] US-6/FR-3,5,6 — Create/rename/delete with confirmation and validation (manually verified: create, rename, delete-with-cancel, delete-with-confirm — all checked against the real files on disk)
+- [ ] US-8/FR-… — Fallback mode functions on non-Chromium browser, mode is visibly labeled (automated E2E only — no manual Firefox pass yet)
+- [ ] US-10 — Full keyboard navigation, no mouse required (tree navigation manually verified keyboard-only; toolbar/dialog-only keyboard flows not manually re-verified beyond what E2E already covers)
+- [ ] Automated suite (unit + integration + e2e) green in CI (green locally; not yet confirmed on an actual GitHub Actions run)
 - [ ] US-11 — App loads and functions with no network after first visit
 
 ## 7. Test Strategy Summary
